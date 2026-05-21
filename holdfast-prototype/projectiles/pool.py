@@ -14,6 +14,7 @@ from panda3d.core import NodePath, LVector3f, LColor
 from direct.showbase.ShowBase import ShowBase
 
 import config
+from utils.color import apply_color
 
 
 class Projectile:
@@ -23,6 +24,7 @@ class Projectile:
         "node", "velocity", "mass", "drag", "damage",
         "lifetime", "age", "radius", "alive", "owner_tag",
         "col_node", "light_np",
+        "uses_arc", "z_velocity", "arc_peak", "splash_radius",
     )
 
     def __init__(self, node: NodePath) -> None:
@@ -38,6 +40,10 @@ class Projectile:
         self.owner_tag: str = "player_bullet"
         self.col_node = None
         self.light_np: Optional[NodePath] = None
+        self.uses_arc: bool = False
+        self.z_velocity: float = 0.0
+        self.arc_peak: float = 0.0
+        self.splash_radius: float = 0.0
 
     def activate(
         self,
@@ -61,10 +67,14 @@ class Projectile:
         self.radius = radius
         self.alive = True
         self.owner_tag = owner_tag
+        self.uses_arc = False
+        self.z_velocity = 0.0
+        self.arc_peak = 0.0
+        self.splash_radius = 0.0
 
         self.node.set_pos(position)
         self.node.set_scale(radius * 2)
-        self.node.set_color(color)
+        apply_color(self.node, color)
         self.node.show()
 
     def deactivate(self) -> None:
@@ -89,12 +99,24 @@ class Projectile:
         if self.age >= self.lifetime:
             return False
 
-        # Apply drag
+        # Apply drag (XY only for arc projectiles)
         self.velocity *= (1.0 - self.drag)
 
         # Integrate position
         pos = self.node.get_pos()
         pos += self.velocity * dt
+
+        # Arc trajectory: fake Z parabola
+        if self.uses_arc:
+            self.z_velocity -= 20.0 * dt  # fake gravity
+            pos.z += self.z_velocity * dt
+            if pos.z <= 0 and self.age > 0.1:
+                pos.z = 0
+                self.node.set_pos(pos)
+                return False  # impact — collision system handles splash
+        else:
+            pos.z = 0
+
         self.node.set_pos(pos)
 
         # Bounds check

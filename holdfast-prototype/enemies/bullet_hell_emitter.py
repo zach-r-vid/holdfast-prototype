@@ -18,6 +18,7 @@ from enemies.base_enemy import BaseEnemy
 from projectiles.patterns import PatternSequencer, ring, spiral, aimed_burst, concentric_rings
 from projectiles.base_projectile import spawn_pattern
 import config
+from utils.color import apply_color
 
 if TYPE_CHECKING:
     from projectiles.pool import ProjectilePool
@@ -43,14 +44,14 @@ class BulletHellEmitter(BaseEnemy):
         if model:
             model.reparent_to(self.node)
             model.set_scale(self.radius)
-            model.set_color(stats.get("color", LColor(1, 0, 0.5, 1)))
+            apply_color(model, stats.get("color", LColor(1, 0, 0.5, 1)))
 
         # Inner glow sphere
         inner = self.base.loader.load_model("models/misc/sphere")
         if inner:
             inner.reparent_to(self.node)
             inner.set_scale(self.radius * 0.5)
-            inner.set_color(LColor(1, 1, 1, 0.8))
+            apply_color(inner, LColor(1, 1, 1, 0.8))
 
     def setup_combat(self, player_node: NodePath, pool: "ProjectilePool") -> None:
         """Give the emitter references it needs to fire at the player."""

@@ -2,9 +2,10 @@
 Tower manning system.
 
 When the player walks up to a tower and presses interact, they "enter"
-it. The camera shifts, player controls the tower's aim directly, and
-damage/fire rate are boosted. The tradeoff: you're stationary and not
-covering other areas of the map.
+it. The player takes direct control: aiming with the mouse and firing
+the tower's weapon (not the player's). The tower stops auto-firing.
+Damage and fire rate are boosted. The tradeoff: you're stationary
+and not covering other areas of the map.
 """
 
 from __future__ import annotations
@@ -34,6 +35,8 @@ class ManningSystem:
         self.placement = tower_placement
 
         self._manned_tower: Optional[BaseTower] = None
+        self._saved_weapon_index: int = 0
+        self._saved_weapon: Optional[dict] = None
 
     @property
     def is_manned(self) -> bool:
@@ -44,11 +47,7 @@ class ManningSystem:
         return self._manned_tower
 
     def try_toggle(self) -> bool:
-        """
-        Toggle manning state. If not manned, try to enter the nearest tower.
-        If manned, exit the current tower.
-        Returns True if state changed.
-        """
+        """Toggle manning state. Returns True if state changed."""
         if self._manned_tower is not None:
             self._exit_tower()
             return True
@@ -70,11 +69,16 @@ class ManningSystem:
         self.movement.teleport(tower.get_position())
         self.movement.velocity = LVector3f(0, 0, 0)
 
-        # Boost shooting stats based on tower type
+        # Save current player weapon and switch to tower's weapon
+        self._saved_weapon_index = self.shooting.weapon_index
+        self._saved_weapon = self.shooting.current_weapon
+
+        tower_weapon = tower.get_weapon_config()
         self.shooting.set_manned(
             True,
             fire_rate_mult=tower.stats.get("manned_fire_rate_mult", 1.5),
             damage_mult=tower.stats.get("manned_damage_mult", 1.3),
+            tower_weapon=tower_weapon,
         )
 
         return True
@@ -86,6 +90,12 @@ class ManningSystem:
             self._manned_tower = None
 
         self.shooting.set_manned(False)
+
+        # Restore player weapon
+        if self._saved_weapon is not None:
+            self.shooting.weapon_index = self._saved_weapon_index
+            self.shooting.current_weapon = self._saved_weapon
+            self._saved_weapon = None
 
     def update(self) -> None:
         """Check if manned tower was destroyed."""

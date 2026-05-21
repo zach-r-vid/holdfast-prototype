@@ -1,4 +1,4 @@
-"""Turret — steady single-target DPS tower. The workhorse."""
+"""Sniper — long-range, slow-firing, high-damage tower."""
 
 from __future__ import annotations
 from typing import TYPE_CHECKING
@@ -15,36 +15,41 @@ if TYPE_CHECKING:
     from projectiles.pool import ProjectilePool
 
 
-class Turret(BaseTower):
-    """Fires single projectiles at the nearest enemy. Reliable DPS."""
+class Sniper(BaseTower):
+    """One shot every two seconds. One-shots grunts. Slow tracking."""
 
     def __init__(self, base: ShowBase, parent: NodePath, position: LVector3f) -> None:
-        super().__init__(base, parent, position, config.TURRET_STATS, "turret")
+        super().__init__(base, parent, position, config.SNIPER_STATS, "sniper")
 
     def _build_visual(self) -> None:
-        """Turret: platform + barrel."""
+        """Sniper: tall narrow platform + long thin barrel."""
         super()._build_visual()
 
-        # Turret head (rotates toward target)
-        self.turret_head = self.node.attach_new_node("turret_head")
+        self.turret_head = self.node.attach_new_node("sniper_head")
         self.turret_head.set_pos(0, 0, 0.4)
 
         barrel = self.base.loader.load_model("models/misc/rgbCube")
         if barrel:
             barrel.reparent_to(self.turret_head)
-            barrel.set_scale(0.15, 0.6, 0.15)
-            barrel.set_pos(0, 0.3, 0)
-            apply_color(barrel, LColor(0.3, 0.8, 0.3, 1.0))
+            barrel.set_scale(0.08, 0.9, 0.08)
+            barrel.set_pos(0, 0.45, 0)
+            apply_color(barrel, LColor(1.0, 1.0, 0.5, 1.0))
 
-        # Glow light
-        plight = PointLight("turret_light")
-        plight.set_color(LColor(0.2, 0.6, 0.2, 1.0))
+        scope = self.base.loader.load_model("models/misc/sphere")
+        if scope:
+            scope.reparent_to(self.turret_head)
+            scope.set_scale(0.12)
+            scope.set_pos(0, 0.2, 0.1)
+            apply_color(scope, LColor(0.8, 0.8, 0.2, 1.0))
+
+        plight = PointLight("sniper_light")
+        plight.set_color(LColor(0.6, 0.6, 0.2, 1.0))
         plight.set_attenuation((1, 0.3, 0.1))
         plight_np = self.turret_head.attach_new_node(plight)
         self.node.get_parent().set_light(plight_np)
 
     def _fire(self, pool: "ProjectilePool") -> None:
-        """Fire a single projectile at the predicted intercept position."""
+        """Fire a single high-speed round at the predicted intercept position."""
         if self._current_target is None:
             return
 
@@ -61,10 +66,8 @@ class Turret(BaseTower):
             return
         direction.normalize()
 
-        # Rotate turret head toward predicted position
         self.turret_head.look_at(predicted)
 
-        # Calculate damage with manned bonus
         weapon = {
             "bullet_speed": self.stats["bullet_speed"],
             "bullet_damage": self.stats["bullet_damage"],
@@ -81,7 +84,7 @@ class Turret(BaseTower):
                 weapon["bullet_damage"] * self.stats.get("manned_damage_mult", 1.0)
             )
 
-        spawn_pos = pos + direction * 1.0
+        spawn_pos = pos + direction * 1.2
         spawn_pos.z = 0.5
 
         spawn_bullet(

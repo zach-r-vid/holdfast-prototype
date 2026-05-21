@@ -16,7 +16,9 @@ from towers.base_tower import BaseTower
 from towers.turret import Turret
 from towers.mortar import Mortar
 from towers.slow_field import SlowField
+from towers.sniper import Sniper
 import config
+from utils.color import apply_color
 
 if TYPE_CHECKING:
     from environment.pathfinding import PathGrid
@@ -27,6 +29,7 @@ TOWER_CLASSES = {
     "turret": Turret,
     "mortar": Mortar,
     "slow_field": SlowField,
+    "sniper": Sniper,
 }
 
 
@@ -47,16 +50,55 @@ class TowerPlacement:
 
         self.towers: list[BaseTower] = []
         self.selected_type: Optional[str] = None
+        self.sell_mode: bool = False
 
         # Placement preview ghost
         self._preview: Optional[NodePath] = None
         self._preview_valid: bool = False
+
+        # Sell mode highlight
+        self._sell_highlight: Optional[NodePath] = None
+        self._sell_target: Optional[BaseTower] = None
+
+    def toggle_sell_mode(self) -> None:
+        """Toggle sell mode on/off."""
+        self.sell_mode = not self.sell_mode
+        if self.sell_mode:
+            self.cancel_selection()
+            self._create_sell_highlight()
+        else:
+            self._clear_sell_highlight()
+
+    def update_sell_preview(self, world_pos: LVector3f) -> Optional[BaseTower]:
+        """Highlight the tower nearest to cursor in sell mode."""
+        if not self.sell_mode or not self._sell_highlight:
+            return None
+
+        tower = self.get_tower_at(world_pos, max_dist=2.0)
+        self._sell_target = tower
+        if tower:
+            self._sell_highlight.set_pos(tower.get_position())
+            self._sell_highlight.set_z(0.5)
+            self._sell_highlight.show()
+        else:
+            self._sell_highlight.hide()
+        return tower
+
+    def try_sell_at(self, world_pos: LVector3f) -> Optional[int]:
+        """Sell the tower nearest to cursor. Returns refund or None."""
+        tower = self.get_tower_at(world_pos, max_dist=2.0)
+        if tower is None:
+            return None
+        refund = self.sell_tower(tower)
+        return refund
 
     def select_tower_type(self, tower_type: str) -> bool:
         """
         Select a tower type for placement. Returns False if
         player can't afford it.
         """
+        self.sell_mode = False
+        self._clear_sell_highlight()
         cost = config.TOWER_PLACEMENT_COST.get(tower_type, 0)
         if self.economy.currency < cost:
             return False
@@ -82,9 +124,9 @@ class TowerPlacement:
         # Check if placement is valid
         self._preview_valid = self.path_grid.is_buildable(snapped)
         if self._preview_valid:
-            self._preview.set_color(LColor(0.2, 1.0, 0.2, 0.5))
+            apply_color(self._preview, LColor(0.2, 1.0, 0.2, 0.5))
         else:
-            self._preview.set_color(LColor(1.0, 0.2, 0.2, 0.5))
+            apply_color(self._preview, LColor(1.0, 0.2, 0.2, 0.5))
 
     def try_place(self, world_pos: LVector3f) -> Optional[BaseTower]:
         """
@@ -166,8 +208,26 @@ class TowerPlacement:
         if self._preview:
             self._preview.reparent_to(self.parent)
             self._preview.set_scale(0.8, 0.8, 0.5)
-            self._preview.set_color(LColor(0.2, 1.0, 0.2, 0.5))
+            apply_color(self._preview, LColor(0.2, 1.0, 0.2, 0.5))
             self._preview.set_transparency(TransparencyAttrib.M_alpha)
+
+    def _create_sell_highlight(self) -> None:
+        """Create a red highlight cube for sell mode."""
+        self._clear_sell_highlight()
+        self._sell_highlight = self.base.loader.load_model("models/misc/rgbCube")
+        if self._sell_highlight:
+            self._sell_highlight.reparent_to(self.parent)
+            self._sell_highlight.set_scale(1.0, 1.0, 0.1)
+            apply_color(self._sell_highlight, LColor(1.0, 0.2, 0.2, 0.5))
+            self._sell_highlight.set_transparency(TransparencyAttrib.M_alpha)
+            self._sell_highlight.hide()
+
+    def _clear_sell_highlight(self) -> None:
+        """Remove the sell highlight."""
+        if self._sell_highlight:
+            self._sell_highlight.remove_node()
+            self._sell_highlight = None
+        self._sell_target = None
 
     @property
     def tower_count(self) -> int:

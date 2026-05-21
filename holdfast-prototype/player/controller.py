@@ -26,6 +26,11 @@ class InputState:
         "move_direction", "aim_direction", "aim_world_pos",
         "shooting", "dash_pressed", "interact_pressed",
         "tower_menu_toggle", "next_wave_pressed",
+        "sell_mode_toggle", "weapon_cycle",
+        "scroll_zoom",
+        "power_activate", "power_cycle",
+        "gravity_activate",
+        "number_key",
         "mouse_pos",
     )
 
@@ -38,6 +43,13 @@ class InputState:
         self.interact_pressed: bool = False
         self.tower_menu_toggle: bool = False
         self.next_wave_pressed: bool = False
+        self.sell_mode_toggle: bool = False
+        self.weapon_cycle: int = 0
+        self.scroll_zoom: int = 0
+        self.power_activate: bool = False
+        self.power_cycle: bool = False
+        self.gravity_activate: bool = False
+        self.number_key: int = 0  # 0=none, 1-4=pressed
         self.mouse_pos = LPoint2f(0, 0)
 
 
@@ -53,10 +65,13 @@ class PlayerController:
         self._just_pressed: dict[str, bool] = {}
         self._ground_plane = Plane(LVector3f(0, 0, 1), LPoint3f(0, 0, 0))
 
+        self._wheel_direction: int = 0
         self._bind_keys()
 
     def _bind_keys(self) -> None:
         """Set up key bindings."""
+        self.base.accept("wheel_up", self._wheel_up)
+        self.base.accept("wheel_down", self._wheel_down)
         key_list = [
             "w", "a", "s", "d",            # movement
             "mouse1", "space",               # shoot
@@ -64,6 +79,12 @@ class PlayerController:
             "e",                             # interact
             "tab",                           # tower menu
             "enter",                         # next wave
+            "x",                             # sell mode
+            "q",                             # cycle weapon
+            "f",                             # activate power-up
+            "r",                             # cycle power ability
+            "g",                             # activate gravity well
+            "1", "2", "3", "4", "5",          # weapon / tower select / repair
         ]
         for key in key_list:
             self._keys[key] = False
@@ -78,6 +99,12 @@ class PlayerController:
 
     def _key_up(self, key: str) -> None:
         self._keys[key] = False
+
+    def _wheel_up(self) -> None:
+        self._wheel_direction = 1
+
+    def _wheel_down(self) -> None:
+        self._wheel_direction = -1
 
     def get_input(self) -> InputState:
         """Sample current input state. Call once per frame."""
@@ -133,6 +160,28 @@ class PlayerController:
         state.interact_pressed = self._just_pressed.get("e", False)
         state.tower_menu_toggle = self._just_pressed.get("tab", False)
         state.next_wave_pressed = self._just_pressed.get("enter", False)
+        state.sell_mode_toggle = self._just_pressed.get("x", False)
+        state.weapon_cycle = 0
+        if self._just_pressed.get("q", False):
+            state.weapon_cycle = 1
+
+        # Power-up
+        state.power_activate = self._just_pressed.get("f", False)
+        state.power_cycle = self._just_pressed.get("r", False)
+        state.gravity_activate = self._just_pressed.get("g", False)
+
+        # Number keys (1-4) — context-dependent (weapon or tower)
+        state.number_key = 0
+        for n in range(1, 6):
+            if self._just_pressed.get(str(n), False):
+                state.number_key = n
+                break
+
+        # Scroll wheel → camera zoom
+        state.scroll_zoom = 0
+        if self._wheel_direction != 0:
+            state.scroll_zoom = self._wheel_direction
+            self._wheel_direction = 0
 
         # Clear just-pressed flags
         for key in self._just_pressed:

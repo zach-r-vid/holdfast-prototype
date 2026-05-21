@@ -8,6 +8,7 @@ from direct.showbase.ShowBase import ShowBase
 
 from towers.base_tower import BaseTower
 import config
+from utils.color import apply_color
 
 if TYPE_CHECKING:
     from enemies.base_enemy import BaseEnemy
@@ -33,7 +34,7 @@ class SlowField(BaseTower):
         if indicator:
             indicator.reparent_to(self.node)
             indicator.set_scale(self.range)
-            indicator.set_color(LColor(0.2, 0.5, 1.0, 0.15))
+            apply_color(indicator, LColor(0.2, 0.5, 1.0, 0.15))
             indicator.set_transparency(TransparencyAttrib.M_alpha)
             indicator.set_pos(0, 0, 0)
 
@@ -43,7 +44,7 @@ class SlowField(BaseTower):
             crystal.reparent_to(self.node)
             crystal.set_scale(0.25, 0.25, 0.6)
             crystal.set_pos(0, 0, 0.5)
-            crystal.set_color(LColor(0.3, 0.6, 1.0, 1.0))
+            apply_color(crystal, LColor(0.3, 0.6, 1.0, 1.0))
             crystal.set_h(45)  # Rotated for diamond look
 
     def update(

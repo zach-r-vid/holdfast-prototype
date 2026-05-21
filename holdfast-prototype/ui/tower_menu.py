@@ -28,7 +28,7 @@ class TowerMenu:
         # Background frame
         self.frame = DirectFrame(
             frameColor=(0.05, 0.05, 0.1, 0.85),
-            frameSize=(-0.4, 0.4, -0.25, 0.25),
+            frameSize=(-0.4, 0.4, -0.42, 0.25),
             pos=(0, 0, 0),
         )
         self.frame.set_transparency(TransparencyAttrib.M_alpha)
@@ -48,11 +48,12 @@ class TowerMenu:
             ("1", "turret", "Turret", config.TOWER_PLACEMENT_COST["turret"], "Steady DPS"),
             ("2", "mortar", "Mortar", config.TOWER_PLACEMENT_COST["mortar"], "AoE splash"),
             ("3", "slow_field", "Slow Field", config.TOWER_PLACEMENT_COST["slow_field"], "Area slow"),
+            ("4", "sniper", "Sniper", config.TOWER_PLACEMENT_COST["sniper"], "Long range"),
         ]
 
         self._option_texts = []
         for i, (key, tower_type, name, cost, desc) in enumerate(tower_defs):
-            y = 0.05 - i * 0.1
+            y = 0.08 - i * 0.08
             text = OnscreenText(
                 text=f"[{key}] {name} — ${cost} — {desc}",
                 pos=(0, y),
@@ -63,11 +64,30 @@ class TowerMenu:
             )
             self._option_texts.append(text)
 
-        # Bind keys
-        self.base.accept("1", self._select, ["turret"])
-        self.base.accept("2", self._select, ["mortar"])
-        self.base.accept("3", self._select, ["slow_field"])
+        # Repair option
+        repair_y = 0.08 - len(tower_defs) * 0.08
+        repair_text = OnscreenText(
+            text=f"[5] Repair — ${config.REPAIR_COST} — Restore {config.REPAIR_AMOUNT} HP",
+            pos=(0, repair_y),
+            scale=0.04,
+            align=TextNode.A_center,
+            fg=(0.3, 1.0, 0.4, 1),
+            parent=self.frame,
+        )
+        self._option_texts.append(repair_text)
 
+        # Sell mode hint
+        sell_text = OnscreenText(
+            text="[X] Sell Tower (click near tower)",
+            pos=(0, repair_y - 0.08),
+            scale=0.04,
+            align=TextNode.A_center,
+            fg=(1.0, 0.4, 0.4, 1),
+            parent=self.frame,
+        )
+        self._option_texts.append(sell_text)
+
+        # Keys are handled by PlayerController → main.py routing
         self.hide()
 
     def _select(self, tower_type: str) -> None:
@@ -76,6 +96,12 @@ class TowerMenu:
             return
         self.on_select(tower_type)
         self.hide()
+
+    def select_by_number(self, number: int) -> None:
+        """Select tower by number key (1-4). Called by main game loop."""
+        tower_types = ["turret", "mortar", "slow_field", "sniper"]
+        if 1 <= number <= len(tower_types) and self.visible:
+            self._select(tower_types[number - 1])
 
     def show(self) -> None:
         self.frame.show()

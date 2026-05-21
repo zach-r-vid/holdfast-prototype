@@ -23,10 +23,13 @@ def spawn_bullet(
     owner_tag: str = "player_bullet",
     speed_mult: float = 1.0,
     inherit_velocity: Optional[LVector3f] = None,
+    arc_z_velocity: float = 0.0,
+    splash_radius: float = 0.0,
 ) -> Optional[Projectile]:
     """
     Spawn a single bullet using a weapon config dict.
     Optionally inherits velocity from the shooter (player movement).
+    Set arc_z_velocity > 0 for mortar-style lobbed shells.
     """
     velocity = LVector3f(direction)
     velocity.normalize()
@@ -35,7 +38,7 @@ def spawn_bullet(
     if inherit_velocity is not None:
         velocity += inherit_velocity * weapon.get("velocity_inherit", 0.0)
 
-    return pool.acquire(
+    proj = pool.acquire(
         position=LVector3f(position),
         velocity=velocity,
         damage=weapon["bullet_damage"],
@@ -46,6 +49,13 @@ def spawn_bullet(
         color=weapon.get("bullet_color", LColor(1, 1, 1, 1)),
         owner_tag=owner_tag,
     )
+
+    if proj is not None and arc_z_velocity > 0:
+        proj.uses_arc = True
+        proj.z_velocity = arc_z_velocity
+        proj.splash_radius = splash_radius
+
+    return proj
 
 
 def spawn_pattern(

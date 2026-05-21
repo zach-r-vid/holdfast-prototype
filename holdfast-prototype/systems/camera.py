@@ -3,10 +3,11 @@ Camera system.
 
 Fixed top-down perspective with dynamic zoom: pulls out during intense
 waves for readability, tightens during tower manning for intimacy.
-Subtle shake on explosions.
+Player can scroll wheel to zoom in/out. Subtle shake on explosions.
 """
 
 from __future__ import annotations
+import math
 import random
 
 from panda3d.core import LVector3f, LPoint3f, NodePath
@@ -27,27 +28,26 @@ class CameraSystem:
         self._current_height = config.CAMERA_HEIGHT
         self._current_angle = config.CAMERA_ANGLE
 
+        # Player scroll zoom offset (stacks with dynamic zoom)
+        self._zoom_offset: float = 0.0
+
         # Shake
         self._shake_intensity: float = 0.0
         self._shake_offset = LVector3f(0, 0, 0)
 
         # Follow target (usually player)
         self._follow_target: NodePath | None = None
-        self._follow_offset = LVector3f(0, 0, 0)
 
         # Manning state
         self._is_manned = False
 
-        # Initial setup
         self._setup()
 
     def _setup(self) -> None:
-        """Position camera for top-down view."""
         self.base.disableMouse()
         self._apply_camera()
 
     def set_follow_target(self, target: NodePath) -> None:
-        """Set the node the camera loosely follows."""
         self._follow_target = target
 
     def set_manned(self, manned: bool) -> None:
@@ -60,24 +60,40 @@ class CameraSystem:
             self._target_height = config.CAMERA_HEIGHT
             self._target_angle = config.CAMERA_ANGLE
 
+    def scroll_zoom(self, direction: int) -> None:
+        """Adjust zoom offset from scroll wheel. +1 = zoom in, -1 = zoom out."""
+        self._zoom_offset -= direction * config.CAMERA_SCROLL_SPEED
+        min_off = config.CAMERA_MIN_HEIGHT - config.CAMERA_HEIGHT
+        max_off = config.CAMERA_MAX_HEIGHT - config.CAMERA_HEIGHT
+        self._zoom_offset = max(min_off, min(max_off, self._zoom_offset))
+
     def add_shake(self, intensity: float | None = None) -> None:
-        """Trigger camera shake (e.g., on explosion)."""
         if intensity is None:
             intensity = config.CAMERA_SHAKE_INTENSITY
         self._shake_intensity = max(self._shake_intensity, intensity)
 
     def update(self, dt: float, active_enemy_count: int = 0) -> None:
         """Update camera position each frame."""
-        # Dynamic zoom based on enemy count
+        # Dynamic zoom based on enemy count (normal mode only)
         if not self._is_manned:
             if active_enemy_count > config.CAMERA_ZOOM_OUT_THRESHOLD:
                 zoom_frac = min(
                     (active_enemy_count - config.CAMERA_ZOOM_OUT_THRESHOLD) / 20.0,
                     1.0,
                 )
-                self._target_height = config.CAMERA_HEIGHT + config.CAMERA_ZOOM_OUT_AMOUNT * zoom_frac
+                base = config.CAMERA_HEIGHT + config.CAMERA_ZOOM_OUT_AMOUNT * zoom_frac
             else:
-                self._target_height = config.CAMERA_HEIGHT
+                base = config.CAMERA_HEIGHT
+            self._target_height = base + self._zoom_offset
+        else:
+            # Manned: still allow scroll zoom
+            self._target_height = config.CAMERA_MANNED_HEIGHT + self._zoom_offset
+
+        # Clamp final height
+        self._target_height = max(
+            config.CAMERA_MIN_HEIGHT,
+            min(config.CAMERA_MAX_HEIGHT, self._target_height),
+        )
 
         # Smooth height/angle transitions
         speed = config.CAMERA_ZOOM_SPEED * dt
@@ -102,14 +118,11 @@ class CameraSystem:
         """Set the actual camera transform."""
         cam = self.base.cam
 
-        # Base position: above the arena center (or follow target)
         look_at = LPoint3f(0, 0, 0)
         if self._follow_target:
             target_pos = self._follow_target.get_pos()
-            # Loosely follow — don't center exactly on player
             look_at = LPoint3f(target_pos.x * 0.3, target_pos.y * 0.3, 0)
 
-        import math
         angle_rad = math.radians(self._current_angle)
         cam_y_offset = self._current_height * math.sin(angle_rad)
         cam_z = self._current_height * math.cos(angle_rad) if abs(angle_rad) < math.pi / 2 else self._current_height

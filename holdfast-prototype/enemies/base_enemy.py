@@ -13,6 +13,7 @@ from panda3d.core import LVector3f, LColor, NodePath
 from direct.showbase.ShowBase import ShowBase
 
 import config
+from utils.color import apply_color
 
 if TYPE_CHECKING:
     from environment.pathfinding import PathGrid
@@ -61,7 +62,7 @@ class BaseEnemy:
         if model:
             model.reparent_to(self.node)
             model.set_scale(self.radius)
-            model.set_color(stats.get("color", LColor(1, 0, 0, 1)))
+            apply_color(model, stats.get("color", LColor(1, 0, 0, 1)))
 
     def set_path(self, path: list[LVector3f]) -> None:
         """Assign a navigation path (list of waypoints to the core)."""
@@ -155,3 +156,15 @@ class BaseEnemy:
 
     def get_position(self) -> LVector3f:
         return self.node.get_pos()
+
+    def get_velocity(self) -> LVector3f:
+        """Estimated velocity vector based on current path target and speed."""
+        if self.current_target is None or not self.alive:
+            return LVector3f(0, 0, 0)
+        direction = self.current_target - self.node.get_pos()
+        direction.z = 0
+        length = direction.length()
+        if length < 0.01:
+            return LVector3f(0, 0, 0)
+        direction /= length
+        return direction * self.speed * self._slow_factor

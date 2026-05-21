@@ -13,10 +13,30 @@ from panda3d.core import LVector3f, LColor, NodePath, PointLight
 from direct.showbase.ShowBase import ShowBase
 
 import config
+from utils.color import apply_color
 
 if TYPE_CHECKING:
     from enemies.base_enemy import BaseEnemy
     from projectiles.pool import ProjectilePool
+
+
+def predict_intercept(
+    tower_pos: LVector3f,
+    target_pos: LVector3f,
+    target_velocity: LVector3f,
+    projectile_speed: float,
+) -> LVector3f:
+    """Predict where to aim so the projectile meets the moving target."""
+    to_target = target_pos - tower_pos
+    to_target.z = 0
+    dist = to_target.length()
+    if dist < 0.01 or projectile_speed < 0.01:
+        return LVector3f(target_pos)
+
+    flight_time = dist / projectile_speed
+    predicted = target_pos + target_velocity * flight_time
+    predicted.z = 0
+    return predicted
 
 
 class BaseTower:
@@ -57,7 +77,24 @@ class BaseTower:
             platform.reparent_to(self.node)
             platform.set_scale(0.8, 0.8, 0.3)
             platform.set_pos(0, 0, 0.15)
-            platform.set_color(LColor(0.4, 0.4, 0.5, 1.0))
+            apply_color(platform, LColor(0.4, 0.4, 0.5, 1.0))
+
+    def get_weapon_config(self) -> dict:
+        """Build a weapon dict from this tower's stats for player firing."""
+        return {
+            "name": self.tower_type.title(),
+            "fire_rate": self.stats["fire_rate"],
+            "bullet_speed": self.stats.get("bullet_speed", 20.0),
+            "bullet_damage": self.stats.get("bullet_damage", 10),
+            "bullet_mass": self.stats.get("bullet_mass", 0.3),
+            "bullet_drag": self.stats.get("bullet_drag", 0.01),
+            "bullet_radius": self.stats.get("bullet_radius", 0.1),
+            "bullet_color": self.stats.get("bullet_color", LColor(1, 1, 1, 1)),
+            "bullet_lifetime": 2.5,
+            "spread": 0.0,
+            "velocity_inherit": 0.0,
+            "ammo": -1,
+        }
 
     def update(
         self,
@@ -69,6 +106,10 @@ class BaseTower:
         if not self.alive:
             return
 
+        # Player controls firing when manned
+        if self.is_manned:
+            return
+
         self._fire_cooldown -= dt
 
         # Acquire or validate target
@@ -78,8 +119,6 @@ class BaseTower:
         if self._current_target and self._fire_cooldown <= 0:
             self._fire(pool)
             fire_rate = self.stats["fire_rate"]
-            if self.is_manned:
-                fire_rate *= self.stats.get("manned_fire_rate_mult", 1.0)
             self._fire_cooldown = 1.0 / fire_rate
 
     def _update_target(self, enemies: list["BaseEnemy"]) -> None:

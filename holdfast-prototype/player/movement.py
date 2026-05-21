@@ -27,6 +27,7 @@ class PlayerMovement:
         self.friction = config.PLAYER_FRICTION
 
         self._speed_override: float | None = None
+        self._path_grid = None  # Set by main.py for wall collision
 
     def update(self, input_state: InputState, dt: float) -> None:
         """
@@ -62,19 +63,39 @@ class PlayerMovement:
             self.velocity = LVector3f(0, 0, 0)
 
         # Integrate position
-        pos = self.node.get_pos()
-        pos += self.velocity * dt
-        pos.z = 0  # Lock to ground plane
+        old_pos = self.node.get_pos()
+        new_pos = LVector3f(old_pos) + self.velocity * dt
+        new_pos.z = 0
+
+        # Wall collision: slide along walls axis-by-axis
+        if self._path_grid is not None:
+            test_x = LVector3f(new_pos.x, old_pos.y, 0)
+            if not self._path_grid.is_player_walkable(test_x):
+                new_pos.x = old_pos.x
+                self.velocity.x = 0
+            test_y = LVector3f(new_pos.x, new_pos.y, 0)
+            if not self._path_grid.is_player_walkable(test_y):
+                new_pos.y = old_pos.y
+                self.velocity.y = 0
 
         # Clamp to arena bounds
         half_w = config.ARENA_WIDTH / 2 - 0.5
         half_h = config.ARENA_HEIGHT / 2 - 0.5
-        pos.x = max(-half_w, min(half_w, pos.x))
-        pos.y = max(-half_h, min(half_h, pos.y))
+        new_pos.x = max(-half_w, min(half_w, new_pos.x))
+        new_pos.y = max(-half_h, min(half_h, new_pos.y))
 
-        self.node.set_pos(pos)
+        self.node.set_pos(new_pos)
 
         # Update facing direction (toward aim position)
+        aim_dir = input_state.aim_world_pos - new_pos
+        aim_dir.z = 0
+        if aim_dir.length_squared() > 0.1:
+            aim_dir.normalize()
+            self.facing = aim_dir
+
+    def update_facing_only(self, input_state: InputState) -> None:
+        """Update aim direction without moving. Used when manned in a tower."""
+        pos = self.node.get_pos()
         aim_dir = input_state.aim_world_pos - pos
         aim_dir.z = 0
         if aim_dir.length_squared() > 0.1:

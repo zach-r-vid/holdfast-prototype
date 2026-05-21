@@ -6,6 +6,7 @@ from direct.showbase.ShowBase import ShowBase
 
 from enemies.base_enemy import BaseEnemy
 import config
+from utils.color import apply_color
 
 
 class Rusher(BaseEnemy):
@@ -21,4 +22,4 @@ class Rusher(BaseEnemy):
             model.reparent_to(self.node)
             # Elongated in movement direction
             model.set_scale(self.radius * 0.7, self.radius * 1.4, self.radius * 0.7)
-            model.set_color(stats.get("color", LColor(1, 0.8, 0, 1)))
+            apply_color(model, stats.get("color", LColor(1, 0.8, 0, 1)))

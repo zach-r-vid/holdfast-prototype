@@ -17,6 +17,8 @@ from enemies.base_enemy import BaseEnemy
 from enemies.grunt import Grunt
 from enemies.rusher import Rusher
 from enemies.bullet_hell_emitter import BulletHellEmitter
+from enemies.slug import Slug
+from enemies.hunter import Hunter
 import config
 
 if TYPE_CHECKING:
@@ -28,9 +30,10 @@ if TYPE_CHECKING:
 # ─── Wave Definitions ─────────────────────────────────────────────
 # Each wave is a list of spawn groups: (enemy_type, count, delay_between)
 # Groups spawn sequentially; enemies within a group spawn with delay.
+# Tuned for lane-based map: early waves teach lanes, mid waves add pressure.
 
 WAVE_DEFINITIONS: list[list[tuple[str, int, float]]] = [
-    # Wave 1: Tutorial — just grunts
+    # Wave 1: Tutorial — just grunts, learn the lanes
     [("grunt", 6, 0.8)],
 
     # Wave 2: More grunts, tighter spacing
@@ -39,20 +42,20 @@ WAVE_DEFINITIONS: list[list[tuple[str, int, float]]] = [
     # Wave 3: Introduce rushers
     [("grunt", 6, 0.6), ("rusher", 4, 0.4)],
 
-    # Wave 4: Mixed pressure
-    [("grunt", 8, 0.5), ("rusher", 6, 0.3)],
+    # Wave 4: Hunters appear — force player movement
+    [("grunt", 8, 0.5), ("rusher", 4, 0.3), ("hunter", 2, 1.5)],
 
-    # Wave 5: Introduce bullet hell emitter
-    [("grunt", 10, 0.5), ("emitter", 1, 0.0)],
+    # Wave 5: Emitter + mixed pressure
+    [("grunt", 8, 0.5), ("emitter", 1, 0.0), ("hunter", 2, 1.0)],
 
-    # Wave 6: Escalation
-    [("rusher", 8, 0.3), ("grunt", 6, 0.5), ("emitter", 2, 2.0)],
+    # Wave 6: Slug area denial + hunter packs
+    [("rusher", 8, 0.3), ("grunt", 6, 0.5), ("emitter", 2, 2.0), ("slug", 2, 3.0), ("hunter", 3, 1.0)],
 
     # Wave 7: Swarm
-    [("grunt", 15, 0.3), ("rusher", 8, 0.2), ("emitter", 2, 1.5)],
+    [("grunt", 15, 0.3), ("rusher", 8, 0.2), ("emitter", 2, 1.5), ("slug", 2, 2.0), ("hunter", 4, 0.8)],
 
     # Wave 8: Boss-level intensity
-    [("grunt", 12, 0.4), ("rusher", 10, 0.25), ("emitter", 3, 1.0)],
+    [("grunt", 12, 0.4), ("rusher", 10, 0.25), ("emitter", 3, 1.0), ("slug", 3, 1.5), ("hunter", 5, 0.6)],
 ]
 
 
@@ -120,11 +123,9 @@ class EnemySpawner:
 
     def update(self, dt: float, gravity_wells: Optional["GravityWellManager"] = None) -> None:
         """Update spawning and all living enemies."""
-        # Handle spawning
         if self._spawning_active:
             self._update_spawning(dt)
 
-        # Update enemies
         for enemy in self.enemies:
             if enemy.alive and not enemy.reached_core:
                 enemy.update(dt, gravity_wells)
@@ -135,7 +136,6 @@ class EnemySpawner:
             self._spawning_active = False
             return
 
-        # Brief gap between groups
         if self._group_gap_timer > 0:
             self._group_gap_timer -= dt
             return
@@ -148,14 +148,13 @@ class EnemySpawner:
 
         if group.done:
             self._current_group_index += 1
-            self._group_gap_timer = 1.5  # Pause between groups
+            self._group_gap_timer = 1.5
 
     def _spawn_enemy(self, enemy_type: str) -> None:
         """Create a single enemy at a random spawn point."""
         spawn_pos = random.choice(config.SPAWN_POINTS)
-        spawn_pos = LVector3f(spawn_pos)  # Copy
+        spawn_pos = LVector3f(spawn_pos)
 
-        # Create enemy by type
         if enemy_type == "grunt":
             enemy = Grunt(self.base, self.parent, spawn_pos)
         elif enemy_type == "rusher":
@@ -163,10 +162,21 @@ class EnemySpawner:
         elif enemy_type == "emitter":
             enemy = BulletHellEmitter(self.base, self.parent, spawn_pos)
             enemy.setup_combat(self.player_node, self.pool)
+        elif enemy_type == "slug":
+            enemy = Slug(self.base, self.parent, spawn_pos)
+        elif enemy_type == "hunter":
+            enemy = Hunter(self.base, self.parent, spawn_pos)
+            enemy.setup_targeting(self.player_node, self.path_grid)
+            # Hunters path toward the player, not the core
+            path = self.path_grid.get_path(spawn_pos, self.player_node.get_pos())
+            if path:
+                enemy.set_path(path)
+            self.enemies.append(enemy)
+            return
         else:
             enemy = Grunt(self.base, self.parent, spawn_pos)
 
-        # Calculate path to core
+        # Core-targeting enemies: path to core
         path = self.path_grid.get_path(spawn_pos, config.CORE_POSITION)
         if path:
             enemy.set_path(path)
@@ -174,23 +184,18 @@ class EnemySpawner:
         self.enemies.append(enemy)
 
     def get_reached_core(self) -> list[BaseEnemy]:
-        """Return enemies that reached the core (to apply damage)."""
-        reached = [e for e in self.enemies if e.reached_core]
-        return reached
+        return [e for e in self.enemies if e.reached_core]
 
     def get_dead(self) -> list[BaseEnemy]:
-        """Return enemies that died (for reward calculation)."""
         return [e for e in self.enemies if not e.alive and not e.reached_core]
 
     def cleanup_dead(self) -> None:
-        """Remove dead and core-reached enemies from the list."""
         for enemy in self.enemies:
             if not enemy.alive or enemy.reached_core:
                 enemy.cleanup()
         self.enemies = [e for e in self.enemies if e.alive and not e.reached_core]
 
     def is_wave_complete(self) -> bool:
-        """True when all enemies are spawned and none remain alive."""
         return (
             not self._spawning_active
             and all(not e.alive or e.reached_core for e in self.enemies)
@@ -201,7 +206,6 @@ class EnemySpawner:
         return sum(1 for e in self.enemies if e.alive and not e.reached_core)
 
     def clear_all(self) -> None:
-        """Remove all enemies. Used on reset."""
         for enemy in self.enemies:
             enemy.cleanup()
         self.enemies.clear()

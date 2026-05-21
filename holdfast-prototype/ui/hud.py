@@ -84,9 +84,18 @@ class HUD:
         )
         self._banner_timer: float = 0.0
 
+        # ── Bottom-left-2: Power meter ──
+        self.power_text = self._text(
+            "POWER: 0% [SHOT]",
+            pos=(-1.3, -0.83),
+            scale=0.045,
+            align=TextNode.A_left,
+            color=(0.7, 0.85, 1.0, 1),
+        )
+
         # ── Controls hint ──
         self.controls_text = self._text(
-            "WASD:Move  Mouse:Aim  Click:Shoot  Shift:Dash  E:Man Tower  Tab:Build  Enter:Next Wave",
+            "WASD:Move  Click:Shoot  Shift:Dash  Q:Weapon  Scroll:Zoom  E:Man Tower  Tab:Build(1-4)  X:Sell  F:Power  R:Cycle  Enter:Wave  Esc:Pause",
             pos=(0, -0.97),
             scale=0.03,
             align=TextNode.A_center,
@@ -117,15 +126,19 @@ class HUD:
         player_max_hp: int,
         weapon_name: str,
         ammo_display: str,
-        dash_fraction: float,
-        core_hp: int,
-        enemy_count: int,
+        weapon_slot: int = 0,
+        dash_fraction: float = 0.0,
+        core_hp: int = 500,
+        enemy_count: int = 0,
+        power_display: str = "",
+        power_ready: bool = False,
+        power_active: bool = False,
     ) -> None:
         """Refresh all HUD elements."""
         self.wave_text.setText(f"WAVE {wave_number} — {phase_name}  [{enemy_count} enemies]")
         self.currency_text.setText(f"$ {currency}")
         self.hp_text.setText(f"HP: {player_hp}/{player_max_hp}")
-        self.weapon_text.setText(f"{weapon_name}  {ammo_display}")
+        self.weapon_text.setText(f"[{weapon_slot}] {weapon_name}  {ammo_display}")
 
         if dash_fraction <= 0:
             self.dash_text.setText("DASH: READY")
@@ -134,6 +147,16 @@ class HUD:
             pct = int((1 - dash_fraction) * 100)
             self.dash_text.setText(f"DASH: {pct}%")
             self.dash_text["fg"] = (0.5, 0.3, 0.6, 1)
+
+        # Power meter
+        if power_display:
+            self.power_text.setText(power_display)
+        if power_active:
+            self.power_text["fg"] = (1.0, 0.9, 0.3, 1)
+        elif power_ready:
+            self.power_text["fg"] = (0.3, 1.0, 0.5, 1)
+        else:
+            self.power_text["fg"] = (0.7, 0.85, 1.0, 1)
 
         self.core_text.setText(f"CORE: {core_hp}")
         if core_hp < 200:

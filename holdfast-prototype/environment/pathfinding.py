@@ -1,10 +1,10 @@
 """
 Grid-based A* pathfinding for enemy navigation.
 
-Enemies pathfind from their spawn point to the core. When towers are
-placed or removed, affected paths are recalculated. This is the system
-that makes tower placement meaningful — blocking paths forces enemies
-to take longer routes through your kill corridors.
+Reads the map layout to determine walkability. Enemies walk on PATH,
+SPAWN, CORE, and BUILD cells. BUILD cells become blocked when a tower
+is placed on them. WALL, OPEN, and COVER cells are impassable to enemies
+(OPEN/COVER are player-only space).
 """
 
 from __future__ import annotations
@@ -13,33 +13,50 @@ from typing import Optional
 
 from panda3d.core import LVector3f
 
+from maps.map_01 import (
+    GRID, MAP_ROWS, MAP_COLS, CELL_SIZE,
+    WALL, PATH, BUILD, OPEN, COVER, SPAWN, CORE,
+)
 import config
+
+# Cells enemies can walk on (before tower placement)
+_ENEMY_WALKABLE = {PATH, BUILD, SPAWN, CORE}
 
 
 class PathGrid:
     """
-    2D grid representing walkable space. Towers block cells.
-    Grid coordinates are integers; world coordinates are floats.
+    2D grid for pathfinding. Cell walkability is derived from
+    the map layout. Towers block BUILD cells.
     """
 
     def __init__(self) -> None:
-        self.cell_size = config.GRID_CELL_SIZE
-        self.cols = int(config.ARENA_WIDTH / self.cell_size)
-        self.rows = int(config.ARENA_HEIGHT / self.cell_size)
+        self.cell_size = CELL_SIZE
+        self.cols = MAP_COLS
+        self.rows = MAP_ROWS
 
-        # True = walkable, False = blocked
-        self.grid: list[list[bool]] = [
-            [True for _ in range(self.cols)] for _ in range(self.rows)
+        # blocked[row][col] = True means a tower is on this BUILD cell
+        self._blocked: list[list[bool]] = [
+            [False for _ in range(self.cols)] for _ in range(self.rows)
         ]
 
-        # Cache of computed paths from each spawn to core
         self._path_cache: dict[tuple[int, int], list[tuple[int, int]]] = {}
         self._dirty = True
 
+    def _is_enemy_walkable(self, row: int, col: int) -> bool:
+        """Can an enemy walk on this cell right now?"""
+        if row < 0 or row >= self.rows or col < 0 or col >= self.cols:
+            return False
+        cell = GRID[row][col]
+        if cell not in _ENEMY_WALKABLE:
+            return False
+        if self._blocked[row][col]:
+            return False
+        return True
+
     def world_to_grid(self, world_pos: LVector3f) -> tuple[int, int]:
         """Convert world position to grid cell."""
-        half_w = config.ARENA_WIDTH / 2
-        half_h = config.ARENA_HEIGHT / 2
+        half_w = self.cols * self.cell_size / 2
+        half_h = self.rows * self.cell_size / 2
         col = int((world_pos.x + half_w) / self.cell_size)
         row = int((world_pos.y + half_h) / self.cell_size)
         col = max(0, min(self.cols - 1, col))
@@ -48,25 +65,26 @@ class PathGrid:
 
     def grid_to_world(self, row: int, col: int) -> LVector3f:
         """Convert grid cell to world position (center of cell)."""
-        half_w = config.ARENA_WIDTH / 2
-        half_h = config.ARENA_HEIGHT / 2
+        half_w = self.cols * self.cell_size / 2
+        half_h = self.rows * self.cell_size / 2
         x = (col + 0.5) * self.cell_size - half_w
         y = (row + 0.5) * self.cell_size - half_h
         return LVector3f(x, y, 0)
 
     def block_cell(self, world_pos: LVector3f) -> bool:
         """
-        Block a cell (tower placed). Returns False if cell was already
+        Block a cell (tower placed). Returns False if cell can't be
         blocked or if blocking would make the core unreachable.
         """
         row, col = self.world_to_grid(world_pos)
-        if not self.grid[row][col]:
-            return False  # Already blocked
+        if GRID[row][col] != BUILD:
+            return False
+        if self._blocked[row][col]:
+            return False
 
         # Temporarily block and check reachability
-        self.grid[row][col] = False
+        self._blocked[row][col] = True
 
-        # Verify at least one spawn can still reach the core
         core_cell = self.world_to_grid(config.CORE_POSITION)
         reachable = False
         for spawn_pos in config.SPAWN_POINTS:
@@ -77,8 +95,7 @@ class PathGrid:
                 break
 
         if not reachable:
-            # Undo — can't block the only path
-            self.grid[row][col] = True
+            self._blocked[row][col] = False
             return False
 
         self._dirty = True
@@ -88,38 +105,34 @@ class PathGrid:
     def unblock_cell(self, world_pos: LVector3f) -> None:
         """Unblock a cell (tower removed)."""
         row, col = self.world_to_grid(world_pos)
-        self.grid[row][col] = True
+        self._blocked[row][col] = False
         self._dirty = True
         self._path_cache.clear()
 
     def is_walkable(self, world_pos: LVector3f) -> bool:
-        """Check if a world position is walkable."""
+        """Check if a world position is walkable for enemies."""
         row, col = self.world_to_grid(world_pos)
-        return self.grid[row][col]
+        return self._is_enemy_walkable(row, col)
+
+    def is_player_walkable(self, world_pos: LVector3f) -> bool:
+        """Check if the player can walk here (wider set of cells)."""
+        row, col = self.world_to_grid(world_pos)
+        if row < 0 or row >= self.rows or col < 0 or col >= self.cols:
+            return False
+        cell = GRID[row][col]
+        return cell != WALL
 
     def is_buildable(self, world_pos: LVector3f) -> bool:
         """Check if a tower can be placed at this position."""
         row, col = self.world_to_grid(world_pos)
-        if not self.grid[row][col]:
+        if GRID[row][col] != BUILD:
             return False
-
-        # Don't build on spawn points or core
-        core_cell = self.world_to_grid(config.CORE_POSITION)
-        if (row, col) == core_cell:
+        if self._blocked[row][col]:
             return False
-
-        for spawn in config.SPAWN_POINTS:
-            if (row, col) == self.world_to_grid(spawn):
-                return False
-
         return True
 
     def get_path(self, from_pos: LVector3f, to_pos: LVector3f) -> Optional[list[LVector3f]]:
-        """
-        Get a path from one world position to another.
-        Returns list of world-space waypoints, or None if unreachable.
-        Uses cached paths when available.
-        """
+        """Get an A* path between two world positions."""
         start = self.world_to_grid(from_pos)
         goal = self.world_to_grid(to_pos)
 
@@ -142,7 +155,9 @@ class PathGrid:
         goal: tuple[int, int],
     ) -> Optional[list[tuple[int, int]]]:
         """A* pathfinding on the grid."""
-        if not self.grid[start[0]][start[1]] or not self.grid[goal[0]][goal[1]]:
+        if not self._is_enemy_walkable(start[0], start[1]):
+            return None
+        if not self._is_enemy_walkable(goal[0], goal[1]):
             return None
 
         open_set: list[tuple[float, tuple[int, int]]] = []
@@ -155,7 +170,6 @@ class PathGrid:
             _, current = heapq.heappop(open_set)
 
             if current == goal:
-                # Reconstruct path
                 path = [current]
                 while current in came_from:
                     current = came_from[current]
@@ -164,7 +178,6 @@ class PathGrid:
                 return path
 
             for neighbor in self._neighbors(current):
-                # Diagonal movement costs more
                 dr = abs(neighbor[0] - current[0])
                 dc = abs(neighbor[1] - current[1])
                 move_cost = 1.414 if (dr + dc == 2) else 1.0
@@ -177,7 +190,7 @@ class PathGrid:
                     h = self._heuristic(neighbor, goal)
                     heapq.heappush(open_set, (tentative_g + h, neighbor))
 
-        return None  # No path found
+        return None
 
     def _neighbors(self, cell: tuple[int, int]) -> list[tuple[int, int]]:
         """Get walkable neighbors (8-directional)."""
@@ -188,14 +201,15 @@ class PathGrid:
                 if dr == 0 and dc == 0:
                     continue
                 nr, nc = row + dr, col + dc
-                if 0 <= nr < self.rows and 0 <= nc < self.cols:
-                    if self.grid[nr][nc]:
-                        # For diagonal movement, check that both adjacent
-                        # cardinal cells are walkable (no corner cutting)
-                        if abs(dr) + abs(dc) == 2:
-                            if not self.grid[row + dr][col] or not self.grid[row][col + dc]:
-                                continue
-                        result.append((nr, nc))
+                if not self._is_enemy_walkable(nr, nc):
+                    continue
+                # Diagonal: both adjacent cardinal cells must be walkable
+                if abs(dr) + abs(dc) == 2:
+                    if not self._is_enemy_walkable(row + dr, col):
+                        continue
+                    if not self._is_enemy_walkable(row, col + dc):
+                        continue
+                result.append((nr, nc))
         return result
 
     @staticmethod
