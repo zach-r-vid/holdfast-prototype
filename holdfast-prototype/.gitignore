@@ -1,0 +1,5 @@
+/models/
+build_debug/
+build_arm11/
+.venv-play/
+.venv-build11/

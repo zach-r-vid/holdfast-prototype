@@ -22,6 +22,14 @@ Controls:
 from __future__ import annotations
 import sys
 
+# Frozen/packaged builds default stdout to ASCII (no locale), so the unicode
+# banners below would crash the game on launch. Force UTF-8 with safe fallback.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
 from direct.showbase.ShowBase import ShowBase
 from panda3d.core import (
     LVector3f, LPoint3f, LColor,
