@@ -26,10 +26,12 @@ The first launch shows *"Windows protected your PC"* (because the app isn't code
 click **More info → Run anyway**. This is expected for a hobby build.
 
 **Mac (Apple Silicon):** Unzip, open the `Holdfast` folder, double-click
-`Play Holdfast.command`. Because it's downloaded from the internet, macOS may say it's
-from an *"unidentified developer"* — **right-click the file → Open → Open** the first time.
-The first launch installs the game engine (~30s, one time); after that it launches instantly.
-Requires Python 3.8–3.13 (the launcher detects it and points to a download if missing).
+`Play Holdfast.command`. On macOS 15+ (Sequoia/26) the old right-click→Open trick is gone;
+the file shows a *"could not verify… is free of malware"* dialog with only **Move to Trash /
+Done**. The one-time fix: click **Done**, then **System Settings → Privacy & Security →**
+scroll to **Security → Open Anyway**. (Terminal shortcut: `xattr -cr` the folder.) These steps
+ship inside the zip as `READ ME FIRST (Mac).txt`. The first launch installs the engine (~30s,
+one time). Requires Python 3.8–3.13 (the launcher detects it and points to a download if missing).
 
 ## Why two different mechanisms
 

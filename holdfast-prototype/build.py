@@ -41,6 +41,37 @@ MAC_EXCLUDE = {
 }
 
 
+MAC_FIRST_RUN_NOTE = """\
+HOLDFAST — first-time setup on Mac
+==================================
+
+macOS blocks apps that aren't signed by a paid Apple developer account, so the
+first launch takes a couple of extra clicks. You only do this once.
+
+1. Double-click "Play Holdfast.command".
+   macOS says it "could not verify... is free of malware" and only offers
+   Move to Trash / Done. Click DONE (do NOT move to trash).
+
+2. Open System Settings > Privacy & Security.
+
+3. Scroll down to the "Security" section. You'll see:
+   "Play Holdfast.command was blocked to protect your Mac."
+   Click OPEN ANYWAY, then confirm with your password or Touch ID.
+
+4. Double-click "Play Holdfast.command" again, and click OPEN on the prompt.
+
+That's it. From now on, just double-click "Play Holdfast.command" to play.
+
+The first launch installs the game engine (~30 seconds, one time). You need
+Python 3.8-3.13; if it's missing, the launcher tells you where to download it.
+
+-----------------------------------------------------------------------------
+Comfortable with Terminal? Do it all in one step instead:
+   xattr -cr "/path/to/Holdfast"      (drag the Holdfast folder onto Terminal)
+then double-click "Play Holdfast.command" normally.
+"""
+
+
 def stage_models() -> Path:
     """Copy Panda3D's stock models into ./models so build_apps can bundle them.
 
@@ -93,6 +124,11 @@ def build_mac() -> None:
     if not launcher.exists():
         raise SystemExit("Missing 'Play Holdfast.command' — cannot build Mac bundle.")
     os.chmod(launcher, 0o755)
+
+    # Downloaded files are quarantined by macOS, which blocks the launcher with
+    # a scary "could not verify" dialog. Ship plain-text first-run instructions
+    # so players can get past Gatekeeper without hunting online.
+    (stage / "READ ME FIRST (Mac).txt").write_text(MAC_FIRST_RUN_NOTE)
 
     zip_path = dist / f"holdfast-{VERSION}_mac.zip"
     if zip_path.exists():

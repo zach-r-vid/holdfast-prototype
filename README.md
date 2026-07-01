@@ -17,11 +17,21 @@ Grab the latest build from the **[Releases page »](../../releases/latest)**
    click **More info → Run anyway**
 
 ### macOS (Apple Silicon)
-1. Download `holdfast-<version>_mac.zip`
-2. Unzip it, open the `Holdfast` folder, **right-click `Play Holdfast.command` → Open → Open**
-   (right-click is only needed the first time, to get past Gatekeeper)
-3. The first launch installs the game engine (~30s, one time), then plays instantly.
+1. Download `holdfast-<version>_mac.zip` and unzip it.
+2. Open the `Holdfast` folder and double-click **`Play Holdfast.command`**.
+3. macOS will say it *"could not verify... is free of malware"* and only offer
+   **Move to Trash / Done** — click **Done**. This is expected (the app isn't
+   signed by a paid Apple developer account). To allow it, one time:
+   - Open **System Settings → Privacy & Security**
+   - Scroll to the **Security** section — you'll see *"Play Holdfast.command was
+     blocked…"* with an **Open Anyway** button. Click it, confirm with Touch ID/password.
+   - Double-click `Play Holdfast.command` again → **Open**.
+4. First launch installs the game engine (~30s, one time), then plays instantly.
    Requires Python 3.8–3.13 — the launcher checks and points you to a download if needed.
+
+> Prefer Terminal? Skip the dialogs entirely: `xattr -cr` on the unzipped
+> `Holdfast` folder, then double-click normally. (Full steps are in the
+> `READ ME FIRST (Mac).txt` inside the zip.)
 
 ## Controls
 
