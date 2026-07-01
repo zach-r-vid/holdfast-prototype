@@ -38,6 +38,8 @@ MAC_EXCLUDE = {
     "build", "dist", "models", "__pycache__", ".git", ".gitignore",
     ".venv", "venv", ".venv-play", ".DS_Store", "build.py", "setup.py",
     "PACKAGING.md", ".pytest_cache",
+    # PyInstaller (.app) build scaffolding — not needed in the source launcher zip
+    "pyi_rthook.py", "pyi_models", "pyi_dist", "pyi_work", "Holdfast.spec",
 }
 
 
@@ -142,12 +144,64 @@ def build_mac() -> None:
     print(f"[mac] wrote {zip_path.name}")
 
 
+def _convert_models_to_bam(src: Path, dst: Path) -> None:
+    """Copy Panda3D's stock models to dst, converting every .egg.pz to .bam.
+
+    A frozen app has only the native Bam loader registered (the egg loader is
+    normally activated by Panda3D's Confauto.prc, which isn't present), so the
+    models must be shipped as .bam. egg2bam ships in the venv's bin/, which
+    build.py already put on PATH.
+    """
+    if dst.exists():
+        shutil.rmtree(dst)
+    shutil.copytree(src, dst)
+    for egg in list(dst.rglob("*.egg.pz")):
+        bam = egg.with_name(egg.name[: -len(".egg.pz")] + ".bam")
+        subprocess.check_call(
+            ["egg2bam", "-o", str(bam), str(egg)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        egg.unlink()
+
+
+def build_mac_app() -> None:
+    """Build a self-contained, native-arm64 .app with PyInstaller.
+
+    Bundles Python + Panda3D + models so players need nothing installed. The
+    output is currently ad-hoc signed (runs locally, but a download still trips
+    Gatekeeper). Turning it into a drag-to-Applications, no-warnings app needs a
+    Developer ID signature + Apple notarization — see the "Notarized .app"
+    section of PACKAGING.md for the remaining, credential-gated steps.
+    """
+    try:
+        import PyInstaller  # noqa: F401
+    except ImportError:
+        raise SystemExit(
+            "PyInstaller not installed. Run: .venv/bin/pip install pyinstaller"
+        )
+    import panda3d
+    bam_models = HERE / "pyi_models"
+    _convert_models_to_bam(Path(panda3d.__file__).parent / "models", bam_models)
+    subprocess.check_call([
+        sys.executable, "-m", "PyInstaller", "--noconfirm", "--windowed",
+        "--name", "Holdfast",
+        "--collect-binaries", "panda3d",       # bundle all panda3d plugins/dylibs
+        "--add-data", f"{bam_models}:models",   # bundled .bam models
+        "--runtime-hook", "pyi_rthook.py",      # supplies frozen-only Panda3D config
+        "--distpath", "pyi_dist", "--workpath", "pyi_work",
+        "main.py",
+    ], cwd=HERE)
+    print("[mac-app] built pyi_dist/Holdfast.app (ad-hoc signed; notarization pending)")
+
+
 def main() -> None:
     target = sys.argv[1] if len(sys.argv) > 1 else "all"
     if target in ("all", "windows"):
         build_windows()
     if target in ("all", "mac"):
         build_mac()
+    if target == "mac-app":
+        build_mac_app()
     print("\nDone. Artifacts in dist/:")
     for f in sorted((HERE / "dist").glob("*.zip")):
         print(f"  {f.name}  ({f.stat().st_size // (1024 * 1024)} MB)")

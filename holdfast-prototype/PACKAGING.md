@@ -78,3 +78,56 @@ startup to prevent this — keep that guard if you refactor the top of `main.py`
 .venv/bin/python build.py windows
 .venv/bin/python build.py mac
 ```
+
+## Notarized native .app for macOS (work in progress)
+
+The launcher above works but isn't the "download → drag to Applications → no
+warnings" experience (that requires an Apple-notarized app). We have the hard
+part working: a self-contained, native-arm64 `.app` built with **PyInstaller**
+that bundles Python + Panda3D + models — no Python install needed, and verified
+to run after being moved. What's left is signing + notarization, which is gated
+on Apple Developer credentials.
+
+### Build the .app
+
+```bash
+.venv/bin/pip install pyinstaller      # one-time
+.venv/bin/python build.py mac-app      # -> pyi_dist/Holdfast.app
+```
+
+How it works (all in `build.py` / `pyi_rthook.py`):
+- `--collect-binaries panda3d` bundles every Panda3D dylib, including the
+  `pandagl` / `openal` plugins that Panda3D loads dynamically at runtime.
+- Stock models are converted to `.bam` (the only loader a frozen app has) and
+  bundled via `--add-data`.
+- `pyi_rthook.py` supplies the startup config a frozen build lacks (normally in
+  Panda3D's `etc/Config.prc`): `load-display pandagl`, the audio library,
+  `default-model-extension .bam`, and the bundled models' search path.
+
+At this point `pyi_dist/Holdfast.app` is **ad-hoc signed** — it runs locally,
+but a downloaded copy still trips Gatekeeper. To finish:
+
+### Remaining steps (need Apple Developer credentials)
+
+1. **Create a "Developer ID Application" certificate** — Xcode → Settings →
+   Accounts → Manage Certificates → **+** → Developer ID Application. Verify with
+   `security find-identity -v -p codesigning` (look for a *Developer ID
+   Application* line; an *Apple Development* cert is **not** sufficient).
+2. **Store notarization credentials** (generate an app-specific password at
+   appleid.apple.com first):
+   ```bash
+   xcrun notarytool store-credentials "holdfast-notary" \
+     --apple-id "YOUR_APPLE_ID" --team-id "3RH8XHJ3AS" --password "APP-SPECIFIC-PW"
+   ```
+3. **Sign, notarize, staple, package** (to be scripted once the cert exists):
+   ```bash
+   codesign --force --deep --options runtime --timestamp \
+     --sign "Developer ID Application: <name> (3RH8XHJ3AS)" pyi_dist/Holdfast.app
+   # zip it, then:
+   xcrun notarytool submit Holdfast.zip --keychain-profile "holdfast-notary" --wait
+   xcrun stapler staple pyi_dist/Holdfast.app
+   # then wrap in a drag-to-Applications .dmg
+   ```
+
+Once notarized, this becomes the primary macOS download and the launcher zip can
+retire.

@@ -3,3 +3,7 @@ build_debug/
 build_arm11/
 .venv-play/
 .venv-build11/
+pyi_dist/
+pyi_work/
+pyi_models/
+*.spec
